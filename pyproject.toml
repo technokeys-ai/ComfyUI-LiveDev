@@ -15,7 +15,7 @@ Documentation = "https://github.com/technokeys-ai/ComfyUI-LiveDev#readme"
 
 # Used by Comfy Registry https://comfyregistry.org
 [tool.comfy]
-PublisherId = "Technokeys-AI"
+PublisherId = "technokeys-ai"
 DisplayName = "ComfyUI-LiveDev"
 Icon = "https://raw.githubusercontent.com/technokeys-ai/ComfyUI-LiveDev/main/icon.svg"
 requires-comfyui = ">=0.38.0"
