@@ -1,0 +1,6 @@
+# watchdog drives the file watcher; psutil is used by the stats and console routes.
+watchdog>=3.0.0
+psutil>=5.8.0
+
+# Optional, only for voice input on browsers without the Web Speech API (see web/advanced.js).
+# SpeechRecognition
