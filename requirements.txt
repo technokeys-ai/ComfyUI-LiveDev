@@ -1,6 +1,13 @@
-# watchdog drives the file watcher; psutil is used by the stats and console routes.
+# Required runtime packages:
+# - watchdog: file watcher for live hot-reload (Core/Reloader.py)
+# - psutil: system & process CPU/RAM/Disk stats (Core/Routes.py)
+# - packaging: requirement & version conflict resolution (Core/DependencyManager.py)
+# - requests: PyPI/GitHub version & metadata lookups (Core/Routes.py)
 watchdog>=3.0.0
 psutil>=5.8.0
+packaging>=21.0
+requests>=2.28.0
 
-# Optional, only for voice input on browsers without the Web Speech API (see web/advanced.js).
+# Optional, only for voice input on browsers without the Web Speech API (see Web/advanced.js).
 # SpeechRecognition
+# pydub

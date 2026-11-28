@@ -27,8 +27,9 @@ from aiohttp import web
 from nodes import load_custom_node
 from server import PromptServer
 
-from . import State
+from . import Console, State
 from . import DependencyManager
+from . import WorkflowGallery
 
 _MODULE_CONFLICTS_CACHE: dict = {"at": 0.0, "data": None}
 
@@ -455,9 +456,8 @@ async def dynamic_extensions_handler(request):
     raise web.HTTPNotFound()
 
 
-@PromptServer.instance.routes.get("/api/{path:.*}")
-async def dynamic_api_handler(request):
-    """Dynamically handle hot-updated API routes."""
+async def _dispatch_dynamic_api(request):
+    """Dynamically handle hot-updated API routes for any HTTP method."""
     path = "/" + request.match_info["path"]  # Reconstruct full path
     method = request.method.upper()
 
@@ -469,6 +469,30 @@ async def dynamic_api_handler(request):
 
     # If no dynamic route found, let the system continue
     raise web.HTTPNotFound()
+
+
+@PromptServer.instance.routes.get("/api/{path:.*}")
+async def dynamic_api_handler(request):
+    """Dynamically handle hot-updated GET API routes."""
+    return await _dispatch_dynamic_api(request)
+
+
+@PromptServer.instance.routes.post("/api/{path:.*}")
+async def dynamic_api_post_handler(request):
+    """Dynamically handle hot-updated POST API routes."""
+    return await _dispatch_dynamic_api(request)
+
+
+@PromptServer.instance.routes.put("/api/{path:.*}")
+async def dynamic_api_put_handler(request):
+    """Dynamically handle hot-updated PUT API routes."""
+    return await _dispatch_dynamic_api(request)
+
+
+@PromptServer.instance.routes.delete("/api/{path:.*}")
+async def dynamic_api_delete_handler(request):
+    """Dynamically handle hot-updated DELETE API routes."""
+    return await _dispatch_dynamic_api(request)
 
 
 @PromptServer.instance.routes.post("/livedev/clear_console")
@@ -1222,4 +1246,177 @@ async def deps_get_installed(request):
         return web.json_response({"ok": True, "installed": installed})
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+@PromptServer.instance.routes.get("/livedev/console_filter")
+async def get_console_filter(request):
+    """Return active console writers, per-source counts/samples, and saved silence rules."""
+    try:
+        return web.json_response(Console.get_console_filter_snapshot())
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+@PromptServer.instance.routes.post("/livedev/console_filter")
+async def update_console_filter(request):
+    """Persist per-source silence rules, keyword filters, scope, and error preservation."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "invalid request"}, status=400)
+    try:
+        State.save_console_filter_config(data if isinstance(data, dict) else {})
+        return web.json_response(Console.get_console_filter_snapshot())
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+@PromptServer.instance.routes.post("/livedev/console_filter/reset_stats")
+async def reset_console_filter_stats(request):
+    """Clear accumulated per-source console line counters and sample previews."""
+    try:
+        Console.reset_console_stats()
+        return web.json_response(Console.get_console_filter_snapshot())
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+_PREFLIGHT_MODEL_FOLDERS = (
+    "checkpoints",
+    "loras",
+    "vae",
+    "clip",
+    "unet",
+    "diffusion_models",
+    "text_encoders",
+    "controlnet",
+    "upscale_models",
+    "embeddings",
+    "clip_vision",
+    "style_models",
+    "audio_encoders",
+    "hypernetworks",
+    "gligen",
+    "photomaker",
+    "model_patches",
+)
+
+
+@PromptServer.instance.routes.get("/livedev/preflight_models")
+async def get_preflight_models(request):
+    """List installed model filenames across standard ComfyUI folder_paths categories.
+
+    Used by the frontend Workflow Pre-Flight Check to verify whether checkpoint, LoRA, VAE,
+    ControlNet, and upscaler filenames referenced in the active workflow exist on disk before
+    queuing a run.
+    """
+    try:
+        available = {}
+        all_files = set()
+        all_basenames = set()
+        folder_names = list(_PREFLIGHT_MODEL_FOLDERS)
+        extra_map = getattr(folder_paths, "folder_names_and_paths", None)
+        if isinstance(extra_map, dict):
+            for key in extra_map.keys():
+                if key not in folder_names and key not in ("custom_nodes", "configs"):
+                    folder_names.append(key)
+
+        for folder in folder_names:
+            try:
+                items = folder_paths.get_filename_list(folder)
+            except Exception:
+                continue
+            if not items:
+                continue
+            cleaned = [str(item).replace("\\", "/") for item in items if item]
+            if cleaned:
+                available[folder] = cleaned
+                for item in cleaned:
+                    all_files.add(item.lower())
+                    all_basenames.add(os.path.basename(item).lower())
+
+        return web.json_response({
+            "ok": True,
+            "categories": len(available),
+            "total": len(all_files),
+            "available": available,
+            "all_files": sorted(all_files),
+            "all_basenames": sorted(all_basenames),
+        })
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+@PromptServer.instance.routes.get("/livedev/workflows/list")
+async def get_workflow_gallery_list(request):
+    """List every ComfyUI, blueprint, template, and custom_nodes workflow across subfolders."""
+    try:
+        force = str(request.query.get("refresh", "")).strip().lower() in ("1", "true", "yes")
+        payload = await asyncio.to_thread(WorkflowGallery.scan_workflows, force)
+        return web.json_response(payload)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+@PromptServer.instance.routes.get("/livedev/workflows/load/{wf_id}")
+async def load_workflow_gallery_item(request):
+    """Return the parsed workflow JSON for a discovered workflow ID."""
+    wf_id = request.match_info.get("wf_id", "")
+    if not WorkflowGallery.is_valid_workflow_id(wf_id):
+        return web.json_response({"ok": False, "error": "invalid workflow id"}, status=400)
+    try:
+        entry, data = await asyncio.to_thread(WorkflowGallery.load_workflow_json, wf_id)
+        if not entry or data is None:
+            return web.json_response({"ok": False, "error": "workflow not found"}, status=404)
+        return web.json_response({
+            "ok": True,
+            "id": entry["id"],
+            "name": entry["name"],
+            "source": entry["source"],
+            "folder": entry["folder"],
+            "relPath": entry["relPath"],
+            "workflow": data,
+        })
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+@PromptServer.instance.routes.get("/livedev/workflows/thumb/{wf_id}")
+async def get_workflow_gallery_thumb(request):
+    """Serve a custom cover, sibling/template preview image, or auto-generated blueprint SVG."""
+    wf_id = request.match_info.get("wf_id", "")
+    if not WorkflowGallery.is_valid_workflow_id(wf_id):
+        raise web.HTTPBadRequest()
+    entry = await asyncio.to_thread(WorkflowGallery.get_workflow_entry, wf_id)
+    if not entry:
+        raise web.HTTPNotFound()
+    thumb_path = entry.get("_thumb")
+    if thumb_path and os.path.isfile(thumb_path):
+        return web.FileResponse(thumb_path, headers={"Cache-Control": "no-cache"})
+    svg_markup = await asyncio.to_thread(WorkflowGallery.render_blueprint_svg, wf_id)
+    return web.Response(
+        text=svg_markup,
+        content_type="image/svg+xml",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@PromptServer.instance.routes.post("/livedev/workflows/thumb/{wf_id}")
+async def set_workflow_gallery_thumb(request):
+    """Save or clear a custom cover thumbnail image for a discovered workflow."""
+    wf_id = request.match_info.get("wf_id", "")
+    if not WorkflowGallery.is_valid_workflow_id(wf_id):
+        return web.json_response({"ok": False, "error": "invalid workflow id"}, status=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "invalid json"}, status=400)
+    clear = bool(body.get("clear")) if isinstance(body, dict) else False
+    img_data = body.get("image") if isinstance(body, dict) else None
+    ok, msg = await asyncio.to_thread(WorkflowGallery.save_custom_thumbnail, wf_id, img_data, clear)
+    if not ok:
+        return web.json_response({"ok": False, "error": msg}, status=400)
+    return web.json_response({"ok": True, "status": msg})
+
+
 

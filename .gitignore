@@ -1,0 +1,36 @@
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local runtime state & user configuration
+config.json
+reload_history.json
+conflict_install_log.json
+workflow_gallery_index.json
+workflow_thumbs/
+*.log
+
+# Local development tools & internal notes
+AGENTS.md
+Tools/
+
+# Release builds & publish staging
+build/
+Publish/
+publish/
+dist/
+*.zip
+*.rar
+*.tar.gz
+
+# Backups & editor/OS files
+*.bak
+*.orig
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

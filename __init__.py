@@ -13,8 +13,12 @@ import logging
 
 from .Core import Banner, Console, Reloader, State
 from .Core import Routes  # noqa: F401  (imported for the route decorators it registers)
+from .Nodes.BypassNodes import NODE_CLASS_MAPPINGS as MAPS_BYPASS
+from .Nodes.BypassNodes import NODE_DISPLAY_NAME_MAPPINGS as NAMES_BYPASS
 from .Nodes.Memory import NODE_CLASS_MAPPINGS as MAPS_MEMORY
 from .Nodes.Memory import NODE_DISPLAY_NAME_MAPPINGS as NAMES_MEMORY
+from .Nodes.RunTimer import NODE_CLASS_MAPPINGS as MAPS_RUN_TIMER
+from .Nodes.RunTimer import NODE_DISPLAY_NAME_MAPPINGS as NAMES_RUN_TIMER
 from .Nodes.Terminal import NODE_CLASS_MAPPINGS as MAPS_TERMINAL
 from .Nodes.Terminal import NODE_DISPLAY_NAME_MAPPINGS as NAMES_TERMINAL
 
@@ -32,15 +36,19 @@ def setup():
 
 setup()
 
-WEB_DIRECTORY = "./web"
+WEB_DIRECTORY = "./Web"
 
 NODE_CLASS_MAPPINGS = {
     **MAPS_TERMINAL,
     **MAPS_MEMORY,
+    **MAPS_RUN_TIMER,
+    **MAPS_BYPASS,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     **NAMES_TERMINAL,
     **NAMES_MEMORY,
+    **NAMES_RUN_TIMER,
+    **NAMES_BYPASS,
 }
 
 Banner.display_livedev_banner(len(NODE_CLASS_MAPPINGS))

@@ -333,6 +333,85 @@ def apply_settings(values: dict) -> None:
     save_config(saved)
 
 
+# Smart Console Noise Filter configuration (persisted under config.json["console_filter"]).
+_VALID_FILTER_MODES = {"allow", "mute_info", "mute_all"}
+_VALID_FILTER_SCOPES = {"both", "browser", "terminal"}
+
+_saved_filter = load_config().get("console_filter")
+if not isinstance(_saved_filter, dict):
+    _saved_filter = {}
+
+CONSOLE_FILTER_SOURCES: dict[str, str] = {
+    str(k).strip(): str(v)
+    for k, v in (_saved_filter.get("sources") or {}).items()
+    if str(k).strip() and str(v) in ("mute_info", "mute_all")
+}
+CONSOLE_FILTER_KEYWORDS: list[str] = [
+    str(k).strip()
+    for k in (_saved_filter.get("keywords") or [])
+    if str(k).strip()
+]
+CONSOLE_FILTER_SCOPE: str = (
+    str(_saved_filter.get("scope"))
+    if str(_saved_filter.get("scope")) in _VALID_FILTER_SCOPES
+    else "both"
+)
+CONSOLE_FILTER_KEEP_ERRORS: bool = bool(_saved_filter.get("keep_errors", True))
+
+
+def get_console_filter_config() -> dict:
+    return {
+        "sources": dict(CONSOLE_FILTER_SOURCES),
+        "keywords": list(CONSOLE_FILTER_KEYWORDS),
+        "scope": CONSOLE_FILTER_SCOPE,
+        "keep_errors": CONSOLE_FILTER_KEEP_ERRORS,
+    }
+
+
+def save_console_filter_config(patch: dict) -> dict:
+    global CONSOLE_FILTER_SCOPE, CONSOLE_FILTER_KEEP_ERRORS
+    if isinstance(patch, dict):
+        if "sources" in patch and isinstance(patch["sources"], dict):
+            for name, mode in patch["sources"].items():
+                key = str(name).strip()
+                if not key:
+                    continue
+                m = str(mode).strip()
+                if m == "allow" or m not in _VALID_FILTER_MODES:
+                    CONSOLE_FILTER_SOURCES.pop(key, None)
+                else:
+                    CONSOLE_FILTER_SOURCES[key] = m
+        if "replace_sources" in patch and isinstance(patch["replace_sources"], dict):
+            CONSOLE_FILTER_SOURCES.clear()
+            for name, mode in patch["replace_sources"].items():
+                key = str(name).strip()
+                m = str(mode).strip()
+                if key and m in ("mute_info", "mute_all"):
+                    CONSOLE_FILTER_SOURCES[key] = m
+        if "keywords" in patch and isinstance(patch["keywords"], list):
+            seen: set[str] = set()
+            cleaned: list[str] = []
+            for raw in patch["keywords"]:
+                kw = str(raw).strip()
+                low = kw.lower()
+                if kw and low not in seen:
+                    seen.add(low)
+                    cleaned.append(kw)
+            CONSOLE_FILTER_KEYWORDS[:] = cleaned[:100]
+        if "scope" in patch:
+            sc = str(patch["scope"]).strip()
+            if sc in _VALID_FILTER_SCOPES:
+                CONSOLE_FILTER_SCOPE = sc
+        if "keep_errors" in patch:
+            CONSOLE_FILTER_KEEP_ERRORS = bool(patch["keep_errors"])
+
+    cfg = get_console_filter_config()
+    saved = load_config()
+    saved["console_filter"] = cfg
+    save_config(saved)
+    return cfg
+
+
 # The REPL runs whatever code the request carries inside the server process, so it stays off until
 # the machine's owner turns it on. The port is reachable by any page the browser opens, and a POST
 # needs no credentials, so a default-on REPL is remote code execution for anyone who can reach it.
